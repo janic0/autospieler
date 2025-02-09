@@ -187,7 +187,7 @@ pub fn update_event_time(
     new_end_time: &str,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
     let response = reqwest::blocking::Client::new()
-        .post(format!(
+        .patch(format!(
             "https://graph.microsoft.com/v1.0/users/{}/calendars/{}/events/{}",
             user_principal_name, calendar_id, event_id
         ))
