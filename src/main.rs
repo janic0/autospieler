@@ -92,8 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         current_date.day()
     );
 
-    let user_id = env::var("DAUERZUSAGE_ID")
+    let user_id_variable = env::var("DAUERZUSAGE_ID")
         .map_err(|e| format!("Could not read environment variable DAUERZUSAGE_ID: {e}"))?;
+    let user_ids = user_id_variable.split(",").collect::<Vec<&str>>();
     let user_mail = env::var("DAUERZUSAGE_EMAIL")
         .map_err(|e| format!("Could not read environment variable DAUERZUSAGE_EMAIL: {e}"))?;
     let user_password = env::var("DAUERZUSAGE_PASSWORT")
@@ -120,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let text = res.text()?;
 
-    let mut document_events = scraper::Html::parse_document(&text);
+    let document_events = scraper::Html::parse_document(&text);
 
     let title_selector = scraper::Selector::parse("title").unwrap();
 
@@ -169,34 +170,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             return Err("title missing".into());
         }
-
-        let res = client
-            .get(format!(
-                "https://www.spielerplus.de/site/switch-user?id={user_id}"
-            ))
-            .send()?;
-        log::info!(
-            "/site/switch-user response: {:?} {}",
-            res.version(),
-            res.status()
-        );
-
-        let res = client.get(url).send()?;
-        log::info!("/events response: {:?} {}", res.version(), res.status());
-        let text = res.text()?;
-        document_events = scraper::Html::parse_document(&text);
-        let mut titles = document_events
-            .select(&title_selector)
-            .map(|x| x.inner_html());
-        title = titles.next().ok_or("missing title")?;
-    }
-    if title != "Termine" && title != "Events" {
-        return Err(format!("title is not 'Termine' or 'Events', but '{}'", title).into());
     }
 
-    // TODO parse trainings
-    //log::info!("{:?}", document_events);
-    // let event_selector = scraper::Selector::parse(".event").unwrap();
+    // Defining selectors
+    let event_selector = scraper::Selector::parse(".event").unwrap();
     let panel_selector = scraper::Selector::parse(".panel").unwrap();
 
     let panel_heading_text_selector = scraper::Selector::parse(".panel-heading-text").unwrap();
@@ -208,189 +185,215 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participation_widget_buttons_selector =
         scraper::Selector::parse(".participation-widget-buttons").unwrap();
     let selected_selector = scraper::Selector::parse(".selected").unwrap();
-    let events: Vec<_> = document_events
-        .select(&scraper::Selector::parse(".event").unwrap())
-        .collect();
 
-    if events.len() == 0 {
-        return Err("No events found".into());
-    }
+    // let events = user_ids.iter().filter_map(
+    //     |user_id: &&str| -> Result<Vec<EnrichedHTMLEvent>, Box<dyn Error>> {
+    //         if user_id.starts_with("pat") {
+    //             return Ok(vec![EnrichedHTMLEvent { user_id: user_id }]);
+    //         }
+    //         Err("i'm a tree".into())
+    //     },
+    // );
+
+    // Vec<EnrichedHTMLEvent>
 
     let mut handled_training_ids = Vec::new();
 
-    for event in events {
-        log::debug!("Handling event {}", event.inner_html());
-        let panel = event
-            .select(&panel_selector)
-            .next()
-            .ok_or("missing .panel")?;
-        let heading_text = event
-            .select(&panel_heading_text_selector)
-            .next()
-            .ok_or("missing .panel-heading-text")?;
-        let event_title_html = heading_text
-            .select(&panel_title_selector)
-            .next()
-            .ok_or("missing .panel-title")?
-            .inner_html();
+    for user_id in user_ids {
+        client
+            .get(format!(
+                "https://www.spielerplus.de/site/switch-user?id={user_id}"
+            ))
+            .send()?;
 
-        // set subtitle or default to empty string
-        let event_subtitle_html = heading_text
-            .select(&panel_subtitle_selector)
-            .next()
-            .and_then(|v| Some(v.inner_html()))
-            .or(Some("".into()))
-            .unwrap();
+        let res = client.get(url).send()?;
+        let text = res.text()?;
+        let document_events = scraper::Html::parse_document(&text);
 
-        let heading_info = event
-            .select(&panel_heading_info_selector)
-            .next()
-            .ok_or("missing .panel-heading-info")?;
-        let event_date_html = heading_info
-            .select(&panel_subtitle_selector)
-            .next()
-            .ok_or("missing .panel-subtitle")?
-            .inner_html();
-        let widget_buttons = event
-            .select(&participation_widget_buttons_selector)
-            .next()
-            .ok_or("missing .participation-widget-buttons")?;
-        let event_time_values: Vec<String> = panel
-            .select(&panel_event_time_item_value_selector)
-            .map(|time| time.inner_html())
-            .collect();
+        let mut titles = document_events
+            .select(&title_selector)
+            .map(|x| x.inner_html());
 
-        let event_start_ts = parse_sp_timestring(&event_time_values[0])
-            .or_else(|| parse_sp_timestring(&event_time_values[1]))
-            .ok_or("no event start found")?;
+        title = titles.next().ok_or("missing title")?;
 
-        let event_type_parts = panel
-            .value()
-            .id()
-            .ok_or("no panel id found")?
-            .split("-")
-            .collect::<Vec<_>>();
-
-        let event_type_sp = *event_type_parts
-            .get(1)
-            .ok_or("panel id is misformed (no event on position 1)")?;
-
-        if event_type_sp != "training" {
-            continue;
+        if title != "Termine" && title != "Events" {
+            return Err(format!("title is not 'Termine' or 'Events', but '{}'", title).into());
         }
 
-        let training_id = *event_type_parts.get(2).ok_or("no id found in event id")?;
+        let events = document_events.select(&event_selector);
 
-        handled_training_ids.push(training_id);
+        for event in events {
+            log::debug!("Handling event {}", event.inner_html());
+            let panel = event
+                .select(&panel_selector)
+                .next()
+                .ok_or("missing .panel")?;
+            let heading_text = event
+                .select(&panel_heading_text_selector)
+                .next()
+                .ok_or("missing .panel-heading-text")?;
+            let event_title_html = heading_text
+                .select(&panel_title_selector)
+                .next()
+                .ok_or("missing .panel-title")?
+                .inner_html();
 
-        let event_end_ts =
-            parse_sp_timestring(&event_time_values[2]).ok_or("no event end found")?;
+            // set subtitle or default to empty string
+            let event_subtitle_html = heading_text
+                .select(&panel_subtitle_selector)
+                .next()
+                .and_then(|v| Some(v.inner_html()))
+                .or(Some("".into()))
+                .unwrap();
 
-        let event_date_parts: Vec<&str> = event_date_html.split("/").collect();
-        let event_date_month: u8 = event_date_parts[1].parse()?;
-        let event_date_year: i32 = match last_month <= event_date_month.into() {
-            true => current_year,
-            false => current_year + 1,
-        };
+            let heading_info = event
+                .select(&panel_heading_info_selector)
+                .next()
+                .ok_or("missing .panel-heading-info")?;
+            let event_date_html = heading_info
+                .select(&panel_subtitle_selector)
+                .next()
+                .ok_or("missing .panel-subtitle")?
+                .inner_html();
+            let widget_buttons = event
+                .select(&participation_widget_buttons_selector)
+                .next()
+                .ok_or("missing .participation-widget-buttons")?;
+            let event_time_values: Vec<String> = panel
+                .select(&panel_event_time_item_value_selector)
+                .map(|time| time.inner_html())
+                .collect();
 
-        let event_start_ts_iso = format!(
-            "{}-{}-{}T{}:00",
-            event_date_year, event_date_parts[1], event_date_parts[0], event_start_ts
-        );
-        let event_end_ts_iso = format!(
-            "{}-{}-{}T{}:00",
-            event_date_year, event_date_parts[1], event_date_parts[0], event_end_ts
-        );
+            let event_start_ts = parse_sp_timestring(&event_time_values[0])
+                .or_else(|| parse_sp_timestring(&event_time_values[1]))
+                .ok_or("no event start found")?;
 
-        println!(
-            "{}-{} {} ({})",
-            event_start_ts_iso, event_end_ts_iso, event_title_html, event_type_sp
-        );
+            let event_type_parts = panel
+                .value()
+                .id()
+                .ok_or("no panel id found")?
+                .split("-")
+                .collect::<Vec<_>>();
 
-        match outlook_events.get(training_id) {
-            Some(event) => {
-                if !event.start.dateTime.starts_with(&event_start_ts_iso)
-                    || !event.end.dateTime.starts_with(&event_end_ts_iso)
-                {
-                    update_event_time(
+            let event_type_sp = *event_type_parts
+                .get(1)
+                .ok_or("panel id is misformed (no event on position 1)")?;
+
+            let training_id = *event_type_parts.get(2).ok_or("no id found in event id")?;
+
+            handled_training_ids.push(training_id.to_string());
+
+            let event_end_ts =
+                parse_sp_timestring(&event_time_values[2]).ok_or("no event end found")?;
+
+            let event_date_parts: Vec<&str> = event_date_html.split("/").collect();
+            let event_date_month: u8 = event_date_parts[1].parse()?;
+            let event_date_year: i32 = match last_month <= event_date_month.into() {
+                true => current_year,
+                false => current_year + 1,
+            };
+
+            let event_start_ts_iso = format!(
+                "{}-{}-{}T{}:00",
+                event_date_year, event_date_parts[1], event_date_parts[0], event_start_ts
+            );
+            let event_end_ts_iso = format!(
+                "{}-{}-{}T{}:00",
+                event_date_year, event_date_parts[1], event_date_parts[0], event_end_ts
+            );
+
+            println!(
+                "{}-{} {} ({})",
+                event_start_ts_iso, event_end_ts_iso, event_title_html, event_type_sp
+            );
+
+            match outlook_events.get(training_id) {
+                Some(event) => {
+                    if !event.start.dateTime.starts_with(&event_start_ts_iso)
+                        || !event.end.dateTime.starts_with(&event_end_ts_iso)
+                    {
+                        update_event_time(
+                            &outlook_user_principal_name,
+                            &outlook_calendar_id,
+                            &microsoft_token,
+                            &event.id,
+                            &event_start_ts_iso,
+                            &event_end_ts_iso,
+                        )?;
+                    }
+
+                    let outlook_event_attendence = event
+                        .attendees
+                        .last()
+                        .ok_or("no attendees found")?
+                        .status
+                        .response
+                        .as_str();
+                    if outlook_event_attendence == "none" {
+                    } else {
+                        let new_attendance = match outlook_event_attendence {
+                            "accepted" => Attendance::ACCEPTED,
+                            "declined" => Attendance::DECLINED,
+                            "tentativelyAccepted" | _ => Attendance::UNSURE,
+                        };
+
+                        let needs_update = match widget_buttons.select(&selected_selector).next() {
+                            Some(selected_button) => {
+                                let previous_attendance = match selected_button
+                                    .value()
+                                    .attr("title")
+                                    .ok_or("missing selected_button attr 'title'")?
+                                {
+                                    "Zugesagt" | "Confirmed" => Attendance::ACCEPTED,
+                                    "Unsicher" | "Unsure" => Attendance::UNSURE,
+                                    "Absagen / Abwesend" | "Declined / Absent" => {
+                                        Attendance::DECLINED
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Unknown selected Zusage button title '{other}'"
+                                        )
+                                        .into());
+                                    }
+                                };
+
+                                new_attendance != previous_attendance
+                            }
+                            None => true,
+                        };
+
+                        if needs_update {
+                            set_attendence(
+                                &client,
+                                &user_id,
+                                &training_id.to_string(),
+                                event_type_sp,
+                                "-",
+                                new_attendance,
+                            )?;
+                        }
+                    }
+                }
+                None => {
+                    office::create_outlook_event(
                         &outlook_user_principal_name,
                         &outlook_calendar_id,
                         &microsoft_token,
-                        &event.id,
+                        &event_title_html,
+                        "New training found in Spielerplus. Please accept/decline this event.",
                         &event_start_ts_iso,
                         &event_end_ts_iso,
+                        &event_subtitle_html,
+                        &user_mail,
+                        training_id,
                     )?;
                 }
-
-                let outlook_event_attendence = event
-                    .attendees
-                    .last()
-                    .ok_or("no attendees found")?
-                    .status
-                    .response
-                    .as_str();
-                if outlook_event_attendence == "none" {
-                } else {
-                    let new_attendance = match outlook_event_attendence {
-                        "accepted" => Attendance::ACCEPTED,
-                        "declined" => Attendance::DECLINED,
-                        "tentativelyAccepted" | _ => Attendance::UNSURE,
-                    };
-
-                    let needs_update = match widget_buttons.select(&selected_selector).next() {
-                        Some(selected_button) => {
-                            let previous_attendance = match selected_button
-                                .value()
-                                .attr("title")
-                                .ok_or("missing selected_button attr 'title'")?
-                            {
-                                "Zugesagt" | "Confirmed" => Attendance::ACCEPTED,
-                                "Unsicher" | "Unsure" => Attendance::UNSURE,
-                                "Absagen / Abwesend" | "Declined / Absent" => Attendance::DECLINED,
-                                other => {
-                                    return Err(format!(
-                                        "Unknown selected Zusage button title '{other}'"
-                                    )
-                                    .into());
-                                }
-                            };
-
-                            new_attendance != previous_attendance
-                        }
-                        None => true,
-                    };
-
-                    if needs_update {
-                        set_attendence(
-                            &client,
-                            &user_id,
-                            &training_id.to_string(),
-                            event_type_sp,
-                            "-",
-                            new_attendance,
-                        )?;
-                    }
-                }
-            }
-            None => {
-                office::create_outlook_event(
-                    &outlook_user_principal_name,
-                    &outlook_calendar_id,
-                    &microsoft_token,
-                    &event_title_html,
-                    "New training found in Spielerplus. Please accept/decline this event.",
-                    &event_start_ts_iso,
-                    &event_end_ts_iso,
-                    &event_subtitle_html,
-                    &user_mail,
-                    training_id,
-                )?;
             }
         }
     }
 
     for event in outlook_events {
-        if handled_training_ids.contains(&event.0.as_str()) {
+        if handled_training_ids.contains(&event.0) {
             continue;
         }
         println!("didn't handle {}, deleting...", event.0);
