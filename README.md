@@ -1,5 +1,7 @@
 # Autospieler
 
+Automatically add Spielerplus trainings / games / tournaments / events to your calendar and update the Spielerplus attendance based on your RSVP. 
+
 ## Environment Variables
 
 - `DAUERZUSAGE_EMAIL` and `DAUERZUSAGE_PASSWORT`: Spielerplus Benutzername und Passwort
