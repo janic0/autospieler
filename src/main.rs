@@ -160,7 +160,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if title == "Team auswählen" || title == "Select team" {
                 // alright!
             } else {
-                return Err("title is not 'Team auswählen'".into());
+                return Err(format!(
+                    "title is not 'Team auswählen' or 'Select team', but '{}'",
+                    title
+                )
+                .into());
             }
         } else {
             return Err("title missing".into());
@@ -187,7 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         title = titles.next().ok_or("missing title")?;
     }
     if title != "Termine" && title != "Events" {
-        return Err("title is not 'Termine'".into());
+        return Err(format!("title is not 'Termine' or 'Events', but '{}'", title).into());
     }
 
     // TODO parse trainings
