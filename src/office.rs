@@ -23,7 +23,10 @@ pub fn get_microsoft_token<'a>(
 
     let response_status = response.status().as_u16();
     if response_status != 200 {
-        return Err(format!("request failed with status code {response_status}").into());
+        let response_text = response.text()?;
+        return Err(
+            format!("request failed with status code {response_status}\n{response_text}").into(),
+        );
     }
 
     let data: MicrosoftTokenResponse = response.json::<MicrosoftTokenResponse>()?;
@@ -162,10 +165,12 @@ pub fn list_outlook_events(
 
     let response_status = response.status().as_u16();
     if response_status != 200 {
-        let a = response.text()?;
-        println!("{}", a);
+        let response_text = response.text()?;
 
-        return Err(format!("/events request failed with status code {response_status}").into());
+        return Err(format!(
+            "/events request failed with status code {response_status}\n {response_text}"
+        )
+        .into());
     }
 
     let data = response.json::<MicrosoftGetEventsResponse>()?;
