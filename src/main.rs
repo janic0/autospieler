@@ -79,8 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Could not read environment variable OUTLOOK_CALENDAR_ID: {e}"))?;
 
     let microsoft_token =
-        office::get_microsoft_token(&entra_client_id, &entra_client_secret, &entra_tenant_id)
-            .unwrap();
+        office::get_microsoft_token(&entra_client_id, &entra_client_secret, &entra_tenant_id)?;
 
     let current_date = chrono::Utc::now();
     let current_year = current_date.year();
