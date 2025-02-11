@@ -16,7 +16,18 @@ fn parse_sp_timestring(input: &str) -> Option<String> {
         return None;
     }
 
+    // only required for times without AM/PM
+    if !input.contains("M") {
+        return Some(input.trim().to_owned());
+    }
+
     let toplevel_parts: Vec<&str> = input.split_whitespace().collect();
+
+    // only required for times without AM/PM
+    if toplevel_parts.len() != 2 {
+        return Some(input.trim().to_owned());
+    }
+
     let time_parts: Vec<&str> = toplevel_parts[0].split(":").collect();
 
     let mut hours: u8 = time_parts[0].parse().ok()?;
@@ -278,15 +289,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get(1)
                 .ok_or("panel id is misformed (no event on position 1)")?;
 
-            let training_id = *event_type_parts.get(2).ok_or("no id found in event id")?;
+            let training_id = event_type_parts
+                .get(2)
+                .ok_or("no id found in event id")?
+                .trim();
 
             handled_training_ids.push(training_id.to_string());
 
             let event_end_ts =
                 parse_sp_timestring(&event_time_values[2]).ok_or("no event end found")?;
 
-            let event_date_parts: Vec<&str> = event_date_html.split("/").collect();
-            let event_date_month: u8 = event_date_parts[1].parse()?;
+            let (event_date_day_str, event_date_month_str) = event_date_html.trim().split_at(2);
+            let event_date_month_str = &event_date_month_str[1..];
+
+            let event_date_month: u8 = event_date_month_str.parse()?;
             let event_date_year: i32 = match last_month <= event_date_month.into() {
                 true => current_year,
                 false => current_year + 1,
@@ -294,11 +310,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let event_start_ts_iso = format!(
                 "{}-{}-{}T{}:00",
-                event_date_year, event_date_parts[1], event_date_parts[0], event_start_ts
+                event_date_year, event_date_month_str, event_date_day_str, event_start_ts
             );
             let event_end_ts_iso = format!(
                 "{}-{}-{}T{}:00",
-                event_date_year, event_date_parts[1], event_date_parts[0], event_end_ts
+                event_date_year, event_date_month_str, event_date_day_str, event_end_ts
             );
 
             println!(
@@ -378,11 +394,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &outlook_user_principal_name,
                         &outlook_calendar_id,
                         &microsoft_token,
-                        &event_title_html,
+                        &event_title_html.trim(),
                         "New training found in Spielerplus. Please accept/decline this event.",
                         &event_start_ts_iso,
                         &event_end_ts_iso,
-                        &event_subtitle_html,
+                        &event_subtitle_html.trim(),
                         &user_mail,
                         training_id,
                     )?;
