@@ -1,7 +1,7 @@
 use chrono::Datelike;
 use office::{cancel_event, update_event_time};
 use reqwest::blocking::Client;
-use std::env;
+use std::{collections::HashMap, env};
 pub mod office;
 
 #[derive(PartialEq, Eq)]
@@ -139,7 +139,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .select(&title_selector)
         .map(|x| x.inner_html());
 
-    //log::info!("{:?}", titles.next().map(|x| x.inner_html()));
+    let select_team_selector = scraper::Selector::parse(".select-team-item").unwrap();
+    let team_name_selector = scraper::Selector::parse(".select-team-item-meta h4").unwrap();
+    let team_link_selector = scraper::Selector::parse("a").unwrap();
+    let mut team_name_map = HashMap::<String, String>::new();
+
     let mut title = titles.next().ok_or("missing title")?;
     if title == "Einloggen" {
         log::info!("Login required");
@@ -179,6 +183,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         } else {
             return Err("title missing".into());
+        }
+
+        for team in document.select(&select_team_selector).into_iter() {
+            let team_title = team
+                .select(&team_name_selector)
+                .next()
+                .ok_or("no team name found in team")?
+                .inner_html();
+
+            let team_id = team
+                .select(&team_link_selector)
+                .next()
+                .ok_or("no team link found in team")?
+                .value()
+                .attr("href")
+                .ok_or("no href attribute found in team link")?
+                .split_once("=")
+                .iter()
+                .last()
+                .ok_or("no id found in team link href attribute")?
+                .1;
+
+            team_name_map.insert(team_id.to_string(), team_title);
         }
     }
 
@@ -317,6 +344,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 event_date_year, event_date_month_str, event_date_day_str, event_end_ts
             );
 
+            let team_extra = team_name_map
+                .get(user_id)
+                .and_then(|name| Some(format!(" – {name}")))
+                .or(Some("".into()))
+                .unwrap();
+
             println!(
                 "{}-{} {} ({})",
                 event_start_ts_iso, event_end_ts_iso, event_title_html, event_type_sp
@@ -394,7 +427,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &outlook_user_principal_name,
                         &outlook_calendar_id,
                         &microsoft_token,
-                        &event_title_html.trim(),
+                        &format!("{}{}", event_title_html.trim(), &team_extra),
                         "New training found in Spielerplus. Please accept/decline this event.",
                         &event_start_ts_iso,
                         &event_end_ts_iso,
