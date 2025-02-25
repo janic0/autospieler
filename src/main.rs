@@ -1,7 +1,7 @@
-use chrono::Datelike;
+use chrono::{DateTime, Datelike, NaiveTime, Timelike};
 use office::{cancel_event, update_event_time};
-use reqwest::blocking::Client;
-use std::{collections::HashMap, env};
+use reqwest::{blocking::Client, cookie::CookieStore, Url};
+use std::{collections::HashMap, env, fmt::Debug, sync::Arc};
 pub mod office;
 
 #[derive(PartialEq, Eq)]
@@ -122,7 +122,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("Fetching {:?}...", url);
 
-    let client = reqwest::blocking::Client::builder()
+    let cookie_store = reqwest::cookie::Jar::default();
+    let cookie_store_arc = Arc::new(cookie_store);
+
+    let client = reqwest::blocking::ClientBuilder::new()
         .cookie_store(true)
         .build()?;
 
@@ -323,8 +326,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             handled_training_ids.push(training_id.to_string());
 
-            let event_end_ts =
-                parse_sp_timestring(&event_time_values[2]).ok_or("no event end found")?;
+            let mut override_end = true;
+            let event_end_ts = parse_sp_timestring(&event_time_values[2])
+                .or_else(|| {
+                    let dt = NaiveTime::parse_from_str(&event_start_ts, "%H:%M");
+                    override_end = false;
+
+                    return match dt {
+                        Ok(d) => Some((d + chrono::Duration::hours(2)).format("%H:%M").to_string()),
+                        Err(err) => {
+                            println!("{} {}", event_start_ts, err);
+                            None
+                        }
+                    };
+                })
+                .ok_or("no end date found and start date is not valid")?;
 
             let (event_date_day_str, event_date_month_str) = event_date_html.trim().split_at(2);
             let event_date_month_str = &event_date_month_str[1..];
@@ -358,7 +374,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match outlook_events.get(training_id) {
                 Some(event) => {
                     if !event.start.dateTime.starts_with(&event_start_ts_iso)
-                        || !event.end.dateTime.starts_with(&event_end_ts_iso)
+                        || (!(event.end.dateTime.starts_with(&event_end_ts_iso)) && override_end)
                     {
                         update_event_time(
                             &outlook_user_principal_name,
