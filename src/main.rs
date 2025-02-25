@@ -1,7 +1,7 @@
-use chrono::{DateTime, Datelike, NaiveTime, Timelike};
+use chrono::{Datelike, NaiveTime};
 use office::{cancel_event, update_event_time};
-use reqwest::{blocking::Client, cookie::CookieStore, Url};
-use std::{collections::HashMap, env, fmt::Debug, sync::Arc};
+use reqwest::blocking::Client;
+use std::{collections::HashMap, env};
 pub mod office;
 
 #[derive(PartialEq, Eq)]
@@ -121,9 +121,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = "https://www.spielerplus.de/events";
 
     log::info!("Fetching {:?}...", url);
-
-    let cookie_store = reqwest::cookie::Jar::default();
-    let cookie_store_arc = Arc::new(cookie_store);
 
     let client = reqwest::blocking::ClientBuilder::new()
         .cookie_store(true)
