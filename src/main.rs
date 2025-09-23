@@ -32,21 +32,13 @@ fn parse_sp_timestring(input: &str) -> Option<String> {
 
     let mut hours: u8 = time_parts[0].parse().ok()?;
 
-    match toplevel_parts[1] {
-        "AM" => {
-            hours = match hours {
-                12 => 0,
-                _ => hours,
-            }
-        }
-        "PM" => {
-            hours = match hours {
-                12 => 12,
-                _ => hours + 12,
-            }
-        }
+    hours = match (hours, toplevel_parts[1]) {
+        (12, "AM") => 0,
+        (h, "AM") => h,
+        (12, "PM") => 12,
+        (h, "PM") => h + 12,
         _ => return None,
-    }
+    };
 
     Some(format!("{:02}:{}", hours, time_parts[1]))
 }
