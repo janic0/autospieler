@@ -11,4 +11,4 @@ jobs:
       - name: Trigger deploy webhook
         run: |
           curl -fsS -X POST \
-            "${{ secrets.DEPLOY_WEBHOOK_URL }}?job=${{ github.event.repository.name }}&ref=${{ github.ref_name }}&sha=${{ github.sha }}"
+            "${{ secrets.DEPLOY_WEBHOOK_URL }}?job=${{ github.event.repository.name }}&ref=${{ github.ref }}&sha=${{ github.sha }}"
